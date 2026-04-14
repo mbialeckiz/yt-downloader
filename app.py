@@ -16,6 +16,10 @@ from pathlib import Path
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
+def _ffmpeg_available() -> bool:
+    import shutil
+    return shutil.which("ffmpeg") is not None
+
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 import yt_dlp
 
@@ -129,6 +133,10 @@ def progress(download_id: str):
 def _do_download(download_id: str, url: str, fmt: str, dest: str, q: queue.Queue):
     is_audio = "bestaudio" in fmt and "bestvideo" not in fmt
 
+    # When ffmpeg is missing, fall back to a single pre-merged stream
+    if not _ffmpeg_available() and not is_audio:
+        fmt = "best[ext=mp4]/best"
+
     def hook(d):
         status = d.get("status", "")
         if status == "downloading":
@@ -157,7 +165,7 @@ def _do_download(download_id: str, url: str, fmt: str, dest: str, q: queue.Queue
         "quiet":                True,
         "merge_output_format":  "mp4",
     }
-    if is_audio:
+    if is_audio and _ffmpeg_available():
         ydl_opts["postprocessors"] = [{
             "key":              "FFmpegExtractAudio",
             "preferredcodec":   "mp3",
