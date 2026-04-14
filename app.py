@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import queue
+import re
 import socket
 import sys
 import threading
@@ -12,6 +13,8 @@ import time
 import uuid
 import webbrowser
 from pathlib import Path
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 import yt_dlp
@@ -66,7 +69,7 @@ def video_info():
         })
     except Exception as exc:
         logging.error("info error: %s", exc)
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _ANSI_RE.sub("", str(exc))}), 400
 
 
 @app.route("/api/download", methods=["POST"])
@@ -169,7 +172,7 @@ def _do_download(download_id: str, url: str, fmt: str, dest: str, q: queue.Queue
             _downloads[download_id]["status"] = "done"
     except Exception as exc:
         logging.error("download error: %s", exc)
-        q.put({"type": "error", "message": str(exc)})
+        q.put({"type": "error", "message": _ANSI_RE.sub("", str(exc))})
         with _lock:
             _downloads[download_id]["status"] = "error"
 
