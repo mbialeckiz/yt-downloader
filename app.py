@@ -81,10 +81,15 @@ def start_download():
     data = request.get_json(force=True)
     url  = (data.get("url") or "").strip()
     fmt  = data.get("format", "bestvideo+bestaudio/best")
-    dest = data.get("dest", DOWNLOAD_DIR)
+    dest = data.get("dest") or DOWNLOAD_DIR
 
     if not url:
         return jsonify({"error": "Brak URL"}), 400
+
+    # Validate destination: must be an existing directory, otherwise fall back
+    # to the default Downloads folder. Prevents writing to arbitrary paths.
+    if not os.path.isdir(dest):
+        dest = DOWNLOAD_DIR
 
     download_id = str(uuid.uuid4())
     q: queue.Queue = queue.Queue()
@@ -110,14 +115,19 @@ def progress(download_id: str):
     q = entry["queue"]
 
     def generate():
-        while True:
-            try:
-                event = q.get(timeout=30)
-                yield f"data: {json.dumps(event)}\n\n"
-                if event.get("type") in ("done", "error"):
-                    break
-            except queue.Empty:
-                yield 'data: {"type":"ping"}\n\n'
+        try:
+            while True:
+                try:
+                    event = q.get(timeout=30)
+                    yield f"data: {json.dumps(event)}\n\n"
+                    if event.get("type") in ("done", "error"):
+                        break
+                except queue.Empty:
+                    yield 'data: {"type":"ping"}\n\n'
+        finally:
+            # Release the finished download so the registry doesn't grow forever
+            with _lock:
+                _downloads.pop(download_id, None)
 
     return Response(
         stream_with_context(generate()),
@@ -208,5 +218,13 @@ if __name__ == "__main__":
         webbrowser.open(f"http://127.0.0.1:{PORT}")
         sys.exit(0)
 
+    if not _ffmpeg_available():
+        print(
+            "UWAGA: ffmpeg nie zostal znaleziony. Laczenie wideo+audio oraz "
+            "konwersja do MP3 nie beda dzialac – pobierane beda gotowe pliki "
+            "(np. .mp4/.m4a). Zainstaluj ffmpeg, aby uzyskac pelna funkcjonalnosc."
+        )
+
+    print(f"YouTube Downloader dziala na http://127.0.0.1:{PORT}")
     threading.Thread(target=_open_browser, args=(PORT,), daemon=True).start()
     app.run(host="127.0.0.1", port=PORT, debug=False, threaded=True)
