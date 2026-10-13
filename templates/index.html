@@ -63,6 +63,18 @@
       padding: 22px 24px;
       margin-bottom: 14px;
     }
+    .browser-select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      color: var(--text);
+      font-size: 14px;
+      padding: 10px 12px;
+      outline: none;
+    }
+    .browser-select:focus { border-color: var(--blue); }
+    .hint { font-size: 12px; color: var(--text2); margin-top: 8px; line-height: 1.5; }
     .card-label {
       font-size: 11px;
       font-weight: 700;
@@ -316,6 +328,22 @@
     <div class="format-grid" id="fmtGrid"></div>
   </div>
 
+  <!-- Cookies -->
+  <div class="card">
+    <div class="card-label">Przeglądarka z logowaniem do YouTube</div>
+    <select id="browserSelect" class="browser-select">
+      <option value="">Brak (bez ciasteczek)</option>
+      <option value="chrome" selected>Google Chrome</option>
+      <option value="safari">Safari</option>
+      <option value="firefox">Firefox</option>
+      <option value="brave">Brave</option>
+      <option value="edge">Microsoft Edge</option>
+      <option value="opera">Opera</option>
+      <option value="vivaldi">Vivaldi</option>
+    </select>
+    <div class="hint">Jeśli YouTube pisze „Sign in to confirm you're not a bot", wybierz przeglądarkę, w której jesteś zalogowany do YouTube.</div>
+  </div>
+
   <!-- Download -->
   <div class="card">
     <div class="card-label">Pobierz</div>
@@ -351,6 +379,11 @@ const FORMATS = [
 let selectedFmt = FORMATS[0].val;
 
 // Build format grid
+const browserSel = document.getElementById("browserSelect");
+try { const b = localStorage.getItem("ytdl-browser"); if (b !== null) browserSel.value = b; } catch {}
+browserSel.addEventListener("change", () => { try { localStorage.setItem("ytdl-browser", browserSel.value); } catch {} });
+function selectedBrowser() { return browserSel.value; }
+
 const grid = document.getElementById("fmtGrid");
 FORMATS.forEach((f, i) => {
   const el = document.createElement("div");
@@ -382,7 +415,7 @@ async function fetchInfo() {
   setLoading("info", true);
   hideAlerts();
   try {
-    const res  = await fetch("/api/info", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({url}) });
+    const res  = await fetch("/api/info", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({url, browser: selectedBrowser()}) });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -421,7 +454,7 @@ async function startDownload() {
   document.getElementById("statEta").textContent   = "—";
 
   try {
-    const res  = await fetch("/api/download", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({url, format: selectedFmt}) });
+    const res  = await fetch("/api/download", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({url, format: selectedFmt, browser: selectedBrowser()}) });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 

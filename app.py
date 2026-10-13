@@ -44,6 +44,16 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 PORT = 7979
 
+SUPPORTED_BROWSERS = {"chrome", "safari", "firefox", "brave", "edge", "opera", "vivaldi", "chromium"}
+
+
+def _cookie_opts(browser: str | None) -> dict:
+    browser = (browser or "").strip().lower()
+    if browser in SUPPORTED_BROWSERS:
+        return {"cookiesfrombrowser": (browser,)}
+    return {}
+
+
 _downloads: dict[str, dict] = {}
 _lock = threading.Lock()
 
@@ -63,7 +73,8 @@ def video_info():
     if not url:
         return jsonify({"error": "Brak URL"}), 400
     try:
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+        opts = {"quiet": True, "no_warnings": True, **_cookie_opts(data.get("browser"))}
+        with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
         return jsonify({
             "title":     info.get("title", ""),
@@ -82,6 +93,7 @@ def start_download():
     url  = (data.get("url") or "").strip()
     fmt  = data.get("format", "bestvideo+bestaudio/best")
     dest = data.get("dest") or DOWNLOAD_DIR
+    cookies = _cookie_opts(data.get("browser"))
 
     if not url:
         return jsonify({"error": "Brak URL"}), 400
@@ -99,7 +111,7 @@ def start_download():
 
     threading.Thread(
         target=_do_download,
-        args=(download_id, url, fmt, dest, q),
+        args=(download_id, url, fmt, dest, q, cookies),
         daemon=True,
     ).start()
 
@@ -140,7 +152,7 @@ def progress(download_id: str):
 # Download worker
 # ---------------------------------------------------------------------------
 
-def _do_download(download_id: str, url: str, fmt: str, dest: str, q: queue.Queue):
+def _do_download(download_id: str, url: str, fmt: str, dest: str, q: queue.Queue, cookies: dict):
     is_audio = "bestaudio" in fmt and "bestvideo" not in fmt
 
     # When ffmpeg is missing, fall back to a single pre-merged stream
@@ -174,6 +186,7 @@ def _do_download(download_id: str, url: str, fmt: str, dest: str, q: queue.Queue
         "progress_hooks":       [hook],
         "quiet":                True,
         "merge_output_format":  "mp4",
+        **cookies,
     }
     if is_audio and _ffmpeg_available():
         ydl_opts["postprocessors"] = [{
